@@ -24,7 +24,6 @@ export const Route = createFileRoute("/planner")({
 type Task = {
   id: string;
   title: string;
-  duration: number;
   scheduledAt: string;
   priority: "Low" | "Medium" | "High";
 };
@@ -41,7 +40,6 @@ function newTask(): Task {
   return {
     id: crypto.randomUUID(),
     title: "",
-    duration: 30,
     scheduledAt: defaultScheduledAt(),
     priority: "Medium",
   };
@@ -62,17 +60,16 @@ function PlannerPage() {
   async function onGenerate() {
     const invalid = new Set<string>();
     tasks.forEach((t) => {
-      if (!t.title.trim() || !t.scheduledAt || !t.duration || t.duration < 5) invalid.add(t.id);
+      if (!t.title.trim() || !t.scheduledAt) invalid.add(t.id);
     });
     if (invalid.size > 0) {
       setErrors(invalid);
-      toast.error("Each task needs a name, scheduled day & time, and duration (≥ 5 min).");
+      toast.error("Each task needs a name and start time.");
       return;
     }
     setErrors(new Set());
     const cleaned = tasks.map((t) => ({
       title: t.title.trim(),
-      durationMinutes: t.duration,
       scheduledAt: t.scheduledAt,
       priority: t.priority,
     }));
@@ -80,8 +77,7 @@ function PlannerPage() {
     try {
       const res = await planTasks({ data: { tasks: cleaned, workStart, workEnd } });
       setSchedule(res.schedule);
-      const totalMin = cleaned.reduce((s, t) => s + t.durationMinutes, 0);
-      pushActivity({ tool: "planner", label: `Planned ${cleaned.length} tasks · ${totalMin} min` });
+      pushActivity({ tool: "planner", label: `Planned ${cleaned.length} task${cleaned.length === 1 ? "" : "s"}` });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to plan");
     } finally {
@@ -93,7 +89,7 @@ function PlannerPage() {
     <div className="mx-auto max-w-5xl px-6 py-10 md:px-8 md:py-12">
       <ToolHeader
         title="AI Task Planner"
-        description="Add your tasks with estimated durations. We'll build a time-blocked schedule prioritized by urgency and importance."
+        description="Add your tasks with start times. We'll build a time-blocked schedule prioritized by urgency and importance."
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -139,30 +135,18 @@ function PlannerPage() {
                       className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:outline-none"
                     />
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-1 rounded bg-surface px-2 py-1 ring-1 ring-border">
-                        <input
-                          type="number"
-                          min={5}
-                          max={480}
-                          step={5}
-                          value={t.duration}
-                          onChange={(e) =>
-                            update(t.id, { duration: parseInt(e.target.value, 10) || 0 })
-                          }
-                          className="w-12 border-0 bg-transparent text-xs focus:outline-none"
-                          aria-label="Duration in minutes"
-                        />
+                      <div className="flex items-center gap-1.5 rounded bg-surface px-2 py-1 ring-1 ring-border">
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          min
+                          Start
                         </span>
+                        <input
+                          type="datetime-local"
+                          value={t.scheduledAt}
+                          onChange={(e) => update(t.id, { scheduledAt: e.target.value })}
+                          className="border-0 bg-transparent text-xs focus:outline-none"
+                          aria-label="Start day and time"
+                        />
                       </div>
-                      <input
-                        type="datetime-local"
-                        value={t.scheduledAt}
-                        onChange={(e) => update(t.id, { scheduledAt: e.target.value })}
-                        className="rounded border-0 bg-surface px-2 py-1 text-xs ring-1 ring-border focus:outline-none"
-                        aria-label="Scheduled day and time"
-                      />
                       <div className="flex overflow-hidden rounded-md ring-1 ring-border">
                         {(["Low", "Medium", "High"] as const).map((p) => (
                           <button
@@ -223,7 +207,7 @@ function PlannerPage() {
               <ScheduleTimeline schedule={schedule} />
             ) : (
               <div className="grid flex-1 place-items-center rounded-lg bg-canvas p-6 text-center text-sm text-muted-foreground ring-1 ring-border">
-                Add tasks with durations to see your time-blocked schedule here.
+                Add tasks with start times to see your time-blocked schedule here.
               </div>
             )}
           </Card>
