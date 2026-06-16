@@ -77,7 +77,7 @@ const PlannerInput = z.object({
       z.object({
         title: z.string().min(1),
         durationMinutes: z.number().int().min(5).max(480),
-        due: z.string().optional(),
+        scheduledAt: z.string().min(1),
         priority: z.enum(["Low", "Medium", "High"]).default("Medium"),
       }),
     )
