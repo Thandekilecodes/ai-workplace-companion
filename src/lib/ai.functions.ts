@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { generateObject, generateText } from "ai";
+import { generateText } from "ai";
 import { z } from "zod";
 
 function mapAiError(err: unknown): Error {
@@ -111,14 +111,10 @@ export const planTasks = createServerFn({ method: "POST" })
           `${i + 1}. ${t.title} — ${t.durationMinutes} min, ${t.priority} priority${t.due ? `, due ${t.due}` : ""}`,
       )
       .join("\n");
-    const model = await getModel();
     try {
-      const { object } = await generateObject({
-        model,
-        schema: ScheduleSchema,
-        system:
-          "You are an executive productivity coach. Build realistic, prioritized daily schedules with clear time blocks.",
-        prompt: `Build a daily schedule between ${data.workStart} and ${data.workEnd}.
+      const text = await runPrompt(
+        "You are an executive productivity coach. Build realistic, prioritized daily schedules with clear time blocks. Always respond with valid JSON only — no markdown fences, no commentary.",
+        `Build a daily schedule between ${data.workStart} and ${data.workEnd}.
 
 Rules:
 - Honor each task's stated duration exactly.
@@ -131,9 +127,21 @@ Rules:
 Tasks:
 ${list}
 
-Return a structured schedule plus a short rationale explaining the ordering.`,
-      });
-      return { schedule: object };
+Respond ONLY with a JSON object of this exact shape:
+{
+  "blocks": [
+    { "startTime": "HH:MM", "endTime": "HH:MM", "title": "string", "type": "task" | "break" | "buffer", "priority": "Low" | "Medium" | "High", "notes": "string" }
+  ],
+  "rationale": "string"
+}
+priority and notes are optional on each block.`,
+      );
+      const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+      const s = cleaned.search(/[{[]/);
+      const e = cleaned.lastIndexOf("}");
+      if (s === -1 || e === -1) throw new Error("AI returned no JSON");
+      const parsed = JSON.parse(cleaned.substring(s, e + 1));
+      return { schedule: ScheduleSchema.parse(parsed) };
     } catch (err) {
       throw mapAiError(err);
     }
