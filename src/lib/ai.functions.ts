@@ -108,7 +108,7 @@ export const planTasks = createServerFn({ method: "POST" })
     const list = data.tasks
       .map(
         (t, i) =>
-          `${i + 1}. ${t.title} — ${t.durationMinutes} min, ${t.priority} priority${t.due ? `, due ${t.due}` : ""}`,
+          `${i + 1}. ${t.title} — scheduled ${t.scheduledAt}, ${t.durationMinutes} min, ${t.priority} priority`,
       )
       .join("\n");
     try {
