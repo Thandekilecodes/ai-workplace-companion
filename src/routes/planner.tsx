@@ -62,18 +62,18 @@ function PlannerPage() {
   async function onGenerate() {
     const invalid = new Set<string>();
     tasks.forEach((t) => {
-      if (!t.title.trim() || !t.duration || t.duration < 5) invalid.add(t.id);
+      if (!t.title.trim() || !t.scheduledAt || !t.duration || t.duration < 5) invalid.add(t.id);
     });
     if (invalid.size > 0) {
       setErrors(invalid);
-      toast.error("Each task needs a name and duration (≥ 5 min).");
+      toast.error("Each task needs a name, scheduled day & time, and duration (≥ 5 min).");
       return;
     }
     setErrors(new Set());
     const cleaned = tasks.map((t) => ({
       title: t.title.trim(),
       durationMinutes: t.duration,
-      due: t.due || undefined,
+      scheduledAt: t.scheduledAt,
       priority: t.priority,
     }));
     setLoading(true);
