@@ -76,7 +76,6 @@ const PlannerInput = z.object({
     .array(
       z.object({
         title: z.string().min(1),
-        durationMinutes: z.number().int().min(5).max(480),
         scheduledAt: z.string().min(1),
         priority: z.enum(["Low", "Medium", "High"]).default("Medium"),
       }),
@@ -89,6 +88,7 @@ const PlannerInput = z.object({
 const ScheduleSchema = z.object({
   blocks: z.array(
     z.object({
+      day: z.string().optional(),
       startTime: z.string(),
       endTime: z.string(),
       title: z.string(),
@@ -108,21 +108,22 @@ export const planTasks = createServerFn({ method: "POST" })
     const list = data.tasks
       .map(
         (t, i) =>
-          `${i + 1}. ${t.title} — scheduled ${t.scheduledAt}, ${t.durationMinutes} min, ${t.priority} priority`,
+          `${i + 1}. ${t.title} — starts ${t.scheduledAt}, ${t.priority} priority`,
       )
       .join("\n");
     try {
       const text = await runPrompt(
         "You are an executive productivity coach. Build realistic, prioritized daily schedules with clear time blocks. Always respond with valid JSON only — no markdown fences, no commentary.",
-        `Build a daily schedule between ${data.workStart} and ${data.workEnd}.
+        `Build a schedule with the working window ${data.workStart}–${data.workEnd} per day.
 
 Rules:
-- Honor each task's stated duration exactly.
-- Start each task at its scheduled date/time when possible; resolve conflicts by priority (High first).
-- Insert short breaks (10-15 min) between long focus blocks (>60 min).
-- Optionally add buffer blocks for transitions.
-- Times must be in 24h "HH:MM" format and not overlap.
-- Each task in the input must appear as exactly one block of type "task".
+- Each task has a fixed start time (date + HH:MM). Use that as the block's startTime.
+- Choose a sensible duration (default 30 min; longer for High priority or complex-sounding work) and compute endTime.
+- Resolve overlaps by priority (High wins); shift lower-priority tasks later the same day.
+- Insert short breaks (10–15 min) between long focus blocks (>60 min). Optional buffer blocks for transitions.
+- Times in 24h "HH:MM". Blocks within a day must not overlap.
+- Each input task appears as exactly one block of type "task".
+- Set "day" on every block as the ISO date (YYYY-MM-DD) it belongs to. Emit blocks chronologically, grouped by day.
 
 Tasks:
 ${list}
@@ -130,7 +131,7 @@ ${list}
 Respond ONLY with a JSON object of this exact shape:
 {
   "blocks": [
-    { "startTime": "HH:MM", "endTime": "HH:MM", "title": "string", "type": "task" | "break" | "buffer", "priority": "Low" | "Medium" | "High", "notes": "string" }
+    { "day": "YYYY-MM-DD", "startTime": "HH:MM", "endTime": "HH:MM", "title": "string", "type": "task" | "break" | "buffer", "priority": "Low" | "Medium" | "High", "notes": "string" }
   ],
   "rationale": "string"
 }
