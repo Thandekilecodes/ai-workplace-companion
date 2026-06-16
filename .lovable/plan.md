@@ -1,62 +1,71 @@
-## AI Workplace Productivity Assistant
+## Enhance AI Task Planner
 
-A dashboard SaaS app with 5 AI-powered tools, threaded chatbot, and a calm teal "Nexus AI" design. No login — outputs and chat threads persist in browser localStorage.
+Two changes: stricter task input (name + duration required) and a structured, visually appealing schedule output (timeline cards instead of a markdown blob).
 
-### Design system (from chosen direction)
-- Tokens: `--canvas #fafafa`, `--surface #f4f4f5`, `--brand #0d9488` (teal), text `#18181b` / muted `#71717a`, Inter font. Ported verbatim into `src/styles.css` as semantic tokens (background, card, primary, muted, etc.), with dark-mode equivalents.
-- Layout: 256px sidebar (surface bg) + main column with breadcrumb header + scrollable workspace + thin disclaimer footer.
-- Components: rounded-xl surface cards with `ring-1 ring-black/5`, pill tone chips, uppercase micro-labels.
+### 1. Input form (`src/routes/planner.tsx`)
 
-### Routes (TanStack Start, file-based)
-- `_layout.tsx` — sidebar + header + footer shell, `<Outlet />`
-  - `index.tsx` → `/` Dashboard (tool cards + recent activity)
-  - `email.tsx` → `/email` Smart Email Generator
-  - `meeting.tsx` → `/meeting` Meeting Notes Summarizer
-  - `planner.tsx` → `/planner` AI Task Planner
-  - `research.tsx` → `/research` Research Assistant
-  - `chat.tsx` → `/chat` chatbot index (auto-create/select thread, navigate)
-  - `chat.$threadId.tsx` → `/chat/:threadId` active conversation
-  - `settings.tsx` → `/settings`
+- Add a required `duration` field (minutes) to each task row alongside title, due date, and priority.
+  - Number input, min 5, step 5, default 30, with a "min" suffix label.
+  - Title input also marked required (red ring if empty on submit).
+- Client validation before calling the server fn:
+  - Every kept task must have non-empty title AND duration ≥ 5.
+  - Show inline error state on the offending row + a toast ("Each task needs a name and duration").
+- Keep the existing add/remove row, priority chips, and day start/end controls.
 
-### Chatbot (threads + localStorage)
-- AI Elements: install `conversation message prompt-input shimmer tool` via `bun x ai-elements@latest add ...`.
-- Thread list in chat layout sub-sidebar; each thread has its own URL; new-thread button creates id and navigates; bootstrap default thread idempotently (no useEffect-only creation); per-thread `UIMessage[]` stored under `nexus.threads` / `nexus.messages.<id>` in localStorage.
-- `useChat` keyed by `threadId`, transport → `/api/chat`, persist completed assistant message in onFinish via client-side effect.
-- Assistant messages: no bubble background; user messages: `bg-primary text-primary-foreground` pill.
+### 2. Server function (`src/lib/ai.functions.ts`)
 
-### Tools (each tool view)
-- Two-column grid: input card (left, col-span-5) + output card (right, col-span-7).
-- Output state: empty placeholder → "Generating..." shimmer → editable result with Copy / Regenerate.
-- Outputs cached to localStorage so they persist across reload.
+- Extend `PlannerInput` task schema with `durationMinutes: z.number().int().min(5).max(480)`.
+- Switch `planTasks` from free-form markdown to **structured output** using `generateObject` with this Zod schema:
 
-Tool-specific inputs:
-- **Email**: recipient, subject, purpose textarea, tone chips (Formal/Professional/Friendly/Persuasive). Output: editable `<textarea>` with subject + body.
-- **Meeting**: large notes textarea. Output: structured cards — Summary, Key Decisions, Action Items, Deadlines.
-- **Planner**: dynamic task rows (title, due date, priority). Output: time-blocked schedule table.
-- **Research**: topic/article textarea. Output: Summary, Key Insights, Recommendations sections.
+  ```ts
+  z.object({
+    blocks: z.array(z.object({
+      startTime: z.string(),     // "HH:MM"
+      endTime: z.string(),       // "HH:MM"
+      title: z.string(),
+      type: z.enum(["task", "break", "buffer"]),
+      priority: z.enum(["Low","Medium","High"]).optional(),
+      notes: z.string().optional(),
+    })),
+    rationale: z.string(),
+  })
+  ```
+- Prompt instructs the model to honor each task's duration, fit within work hours, insert short breaks between long blocks, and order by priority/urgency.
+- Return `{ schedule }` (object) instead of `{ text }`. Update the activity log entry to match.
 
-### AI backend (Lovable AI Gateway)
-- Enable Lovable Cloud (provisions `LOVABLE_API_KEY`).
-- `src/lib/ai-gateway.server.ts` — provider helper using `@ai-sdk/openai-compatible` against `https://ai.gateway.lovable.dev/v1`.
-- `src/routes/api/chat.ts` — server route, `streamText` with `google/gemini-3-flash-preview`, `toUIMessageStreamResponse`.
-- `src/lib/ai.functions.ts` — `createServerFn` endpoints for the 4 non-chat tools:
-  - `generateEmail`, `summarizeMeeting` (structured Output via Zod), `planTasks` (structured), `researchTopic` (structured).
-- Surface 429 / 402 / validation errors via toast.
+### 3. Output UI — timeline cards
 
-### Dashboard
-- 5 tool cards (icon, title, description, link) + "Recent activity" list pulled from localStorage (last 5 generations across tools).
+Replace the current `<Markdown>` block with a dedicated `<ScheduleTimeline blocks={...} />` rendered inside the existing output card.
 
-### Settings
-- Theme toggle (light/dark), default tone, "Clear all stored data" button.
+Layout per block (card row):
 
-### Shared UI
-- AppSidebar with active route highlighting via `useRouterState`.
-- Header: breadcrumb (current route name), theme toggle, notifications dot, avatar.
-- Footer: AI disclaimer on every tool view.
-- Toast (`sonner`) for errors and copy confirmations.
+```text
+┌──────────────────────────────────────────────────────────┐
+│  09:00          ●  Draft Q3 roadmap          [HIGH]      │
+│  10:30             45 min · task                          │
+│  ─────             Notes: pull metrics from dashboard     │
+└──────────────────────────────────────────────────────────┘
+```
 
-### Technical notes
-- Stack: TanStack Start, React 19, Tailwind v4, shadcn, AI SDK (`ai`, `@ai-sdk/react`, `@ai-sdk/openai-compatible`), Zod, AI Elements.
-- All chat-shape per `chat-agent-ui-contract`: dedicated `chat.$threadId` route, key chat by threadId, idempotent bootstrap, no nested buttons in thread list.
-- No Sparkles icon as logo — use a small teal square logomark matching the prototype.
-- Mobile: sidebar collapses to a `Sheet` toggle in header.
+- Left rail: start time (mono, large), end time (muted, smaller), connected by a vertical line through a colored dot.
+- Dot color by `type`: task → `bg-primary`, break → `bg-muted-foreground`, buffer → `ring-1 ring-border bg-canvas`.
+- Right side: title (semibold), priority pill (`Low` muted / `Medium` secondary / `High` primary), duration + type meta row, optional notes line.
+- Cards: `rounded-lg bg-canvas ring-1 ring-border p-4`, stacked with `space-y-3`. Subtle hover lift.
+- Above the list: small header row with total scheduled time and task count.
+- Below the list: collapsible "Why this order" panel showing `rationale`.
+- Empty state and loading shimmer stay as today.
+
+All colors via existing semantic tokens (`primary`, `muted-foreground`, `border`, `canvas`, `surface`) — no hardcoded hex.
+
+### 4. Persistence
+
+- `localStorage` cache key for planner output stores the new schedule object (versioned key bump or simple shape check to ignore stale string payloads).
+- Activity entry label updates to `Planned N tasks · M min`.
+
+### Files touched
+- `src/routes/planner.tsx` — add duration field, validation, new output renderer.
+- `src/lib/ai.functions.ts` — schema + `generateObject` for `planTasks`.
+- `src/components/schedule-timeline.tsx` *(new)* — timeline card component.
+- `src/lib/storage.ts` — only if planner cache shape needs a guard (minor).
+
+No routing, auth, or backend infra changes.

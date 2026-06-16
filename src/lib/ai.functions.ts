@@ -1,24 +1,28 @@
 import { createServerFn } from "@tanstack/react-start";
-import { generateText } from "ai";
+import { generateObject, generateText } from "ai";
 import { z } from "zod";
 
-async function runPrompt(system: string, prompt: string): Promise<string> {
+function mapAiError(err: unknown): Error {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.includes("429")) return new Error("Rate limit reached. Please try again in a moment.");
+  if (message.includes("402")) return new Error("AI credits exhausted. Add credits in workspace settings.");
+  return new Error(message);
+}
+
+async function getModel() {
   const key = process.env.LOVABLE_API_KEY;
   if (!key) throw new Error("Missing LOVABLE_API_KEY");
   const { createLovableAiGatewayProvider } = await import("./ai-gateway.server");
-  const gateway = createLovableAiGatewayProvider(key);
+  return createLovableAiGatewayProvider(key)("google/gemini-3-flash-preview");
+}
+
+async function runPrompt(system: string, prompt: string): Promise<string> {
+  const model = await getModel();
   try {
-    const { text } = await generateText({
-      model: gateway("google/gemini-3-flash-preview"),
-      system,
-      prompt,
-    });
+    const { text } = await generateText({ model, system, prompt });
     return text;
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("429")) throw new Error("Rate limit reached. Please try again in a moment.");
-    if (message.includes("402")) throw new Error("AI credits exhausted. Add credits in workspace settings.");
-    throw new Error(message);
+    throw mapAiError(err);
   }
 }
 
@@ -72,6 +76,7 @@ const PlannerInput = z.object({
     .array(
       z.object({
         title: z.string().min(1),
+        durationMinutes: z.number().int().min(5).max(480),
         due: z.string().optional(),
         priority: z.enum(["Low", "Medium", "High"]).default("Medium"),
       }),
@@ -81,20 +86,57 @@ const PlannerInput = z.object({
   workEnd: z.string().default("18:00"),
 });
 
+const ScheduleSchema = z.object({
+  blocks: z.array(
+    z.object({
+      startTime: z.string(),
+      endTime: z.string(),
+      title: z.string(),
+      type: z.enum(["task", "break", "buffer"]),
+      priority: z.enum(["Low", "Medium", "High"]).optional(),
+      notes: z.string().optional(),
+    }),
+  ),
+  rationale: z.string(),
+});
+
+export type Schedule = z.infer<typeof ScheduleSchema>;
+
 export const planTasks = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => PlannerInput.parse(d))
   .handler(async ({ data }) => {
     const list = data.tasks
-      .map((t, i) => `${i + 1}. ${t.title}${t.due ? ` (due ${t.due})` : ""} — ${t.priority} priority`)
+      .map(
+        (t, i) =>
+          `${i + 1}. ${t.title} — ${t.durationMinutes} min, ${t.priority} priority${t.due ? `, due ${t.due}` : ""}`,
+      )
       .join("\n");
-    const text = await runPrompt(
-      "You are an executive productivity coach. Build realistic, prioritized daily schedules.",
-      `Create a daily schedule between ${data.workStart} and ${data.workEnd}, prioritizing by urgency and importance. Use a markdown table with columns "Time" and "Task". Add a short "Notes" section below with rationale.
+    const model = await getModel();
+    try {
+      const { object } = await generateObject({
+        model,
+        schema: ScheduleSchema,
+        system:
+          "You are an executive productivity coach. Build realistic, prioritized daily schedules with clear time blocks.",
+        prompt: `Build a daily schedule between ${data.workStart} and ${data.workEnd}.
+
+Rules:
+- Honor each task's stated duration exactly.
+- Order by urgency (due date) and priority (High first).
+- Insert short breaks (10-15 min) between long focus blocks (>60 min).
+- Optionally add buffer blocks for transitions.
+- Times must be in 24h "HH:MM" format and not overlap.
+- Each task in the input must appear as exactly one block of type "task".
 
 Tasks:
-${list}`,
-    );
-    return { text };
+${list}
+
+Return a structured schedule plus a short rationale explaining the ordering.`,
+      });
+      return { schedule: object };
+    } catch (err) {
+      throw mapAiError(err);
+    }
   });
 
 const ResearchInput = z.object({ topic: z.string().min(3) });
