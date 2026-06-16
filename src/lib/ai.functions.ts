@@ -1,24 +1,28 @@
 import { createServerFn } from "@tanstack/react-start";
-import { generateText } from "ai";
+import { generateObject, generateText } from "ai";
 import { z } from "zod";
 
-async function runPrompt(system: string, prompt: string): Promise<string> {
+function mapAiError(err: unknown): Error {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.includes("429")) return new Error("Rate limit reached. Please try again in a moment.");
+  if (message.includes("402")) return new Error("AI credits exhausted. Add credits in workspace settings.");
+  return new Error(message);
+}
+
+async function getModel() {
   const key = process.env.LOVABLE_API_KEY;
   if (!key) throw new Error("Missing LOVABLE_API_KEY");
   const { createLovableAiGatewayProvider } = await import("./ai-gateway.server");
-  const gateway = createLovableAiGatewayProvider(key);
+  return createLovableAiGatewayProvider(key)("google/gemini-3-flash-preview");
+}
+
+async function runPrompt(system: string, prompt: string): Promise<string> {
+  const model = await getModel();
   try {
-    const { text } = await generateText({
-      model: gateway("google/gemini-3-flash-preview"),
-      system,
-      prompt,
-    });
+    const { text } = await generateText({ model, system, prompt });
     return text;
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("429")) throw new Error("Rate limit reached. Please try again in a moment.");
-    if (message.includes("402")) throw new Error("AI credits exhausted. Add credits in workspace settings.");
-    throw new Error(message);
+    throw mapAiError(err);
   }
 }
 
