@@ -118,7 +118,7 @@ export const planTasks = createServerFn({ method: "POST" })
 
 Rules:
 - Honor each task's stated duration exactly.
-- Order by urgency (due date) and priority (High first).
+- Start each task at its scheduled date/time when possible; resolve conflicts by priority (High first).
 - Insert short breaks (10-15 min) between long focus blocks (>60 min).
 - Optionally add buffer blocks for transitions.
 - Times must be in 24h "HH:MM" format and not overlap.
