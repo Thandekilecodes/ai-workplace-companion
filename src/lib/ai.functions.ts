@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { generateObject, generateText } from "ai";
+import { generateText } from "ai";
 import { z } from "zod";
 
 function mapAiError(err: unknown): Error {
