@@ -25,12 +25,26 @@ type Task = {
   id: string;
   title: string;
   duration: number;
-  due: string;
+  scheduledAt: string;
   priority: "Low" | "Medium" | "High";
 };
 
+function defaultScheduledAt(): string {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  d.setHours(9, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:00`;
+}
+
 function newTask(): Task {
-  return { id: crypto.randomUUID(), title: "", duration: 30, due: "", priority: "Medium" };
+  return {
+    id: crypto.randomUUID(),
+    title: "",
+    duration: 30,
+    scheduledAt: defaultScheduledAt(),
+    priority: "Medium",
+  };
 }
 
 function PlannerPage() {
