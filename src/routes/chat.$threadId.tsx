@@ -139,8 +139,7 @@ function ChatWindow({
       <div className="border-t border-border bg-canvas px-4 py-4">
         <div className="mx-auto max-w-3xl">
           <PromptInput
-            onSubmit={(e) => {
-              e.preventDefault();
+            onSubmit={() => {
               handleSubmit();
             }}
           >
