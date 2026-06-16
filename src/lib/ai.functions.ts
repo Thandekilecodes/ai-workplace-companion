@@ -77,7 +77,7 @@ const PlannerInput = z.object({
       z.object({
         title: z.string().min(1),
         durationMinutes: z.number().int().min(5).max(480),
-        due: z.string().optional(),
+        scheduledAt: z.string().min(1),
         priority: z.enum(["Low", "Medium", "High"]).default("Medium"),
       }),
     )
@@ -108,7 +108,7 @@ export const planTasks = createServerFn({ method: "POST" })
     const list = data.tasks
       .map(
         (t, i) =>
-          `${i + 1}. ${t.title} — ${t.durationMinutes} min, ${t.priority} priority${t.due ? `, due ${t.due}` : ""}`,
+          `${i + 1}. ${t.title} — scheduled ${t.scheduledAt}, ${t.durationMinutes} min, ${t.priority} priority`,
       )
       .join("\n");
     try {
@@ -118,7 +118,7 @@ export const planTasks = createServerFn({ method: "POST" })
 
 Rules:
 - Honor each task's stated duration exactly.
-- Order by urgency (due date) and priority (High first).
+- Start each task at its scheduled date/time when possible; resolve conflicts by priority (High first).
 - Insert short breaks (10-15 min) between long focus blocks (>60 min).
 - Optionally add buffer blocks for transitions.
 - Times must be in 24h "HH:MM" format and not overlap.

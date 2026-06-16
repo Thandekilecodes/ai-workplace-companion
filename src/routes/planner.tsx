@@ -25,12 +25,26 @@ type Task = {
   id: string;
   title: string;
   duration: number;
-  due: string;
+  scheduledAt: string;
   priority: "Low" | "Medium" | "High";
 };
 
+function defaultScheduledAt(): string {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  d.setHours(9, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:00`;
+}
+
 function newTask(): Task {
-  return { id: crypto.randomUUID(), title: "", duration: 30, due: "", priority: "Medium" };
+  return {
+    id: crypto.randomUUID(),
+    title: "",
+    duration: 30,
+    scheduledAt: defaultScheduledAt(),
+    priority: "Medium",
+  };
 }
 
 function PlannerPage() {
@@ -48,18 +62,18 @@ function PlannerPage() {
   async function onGenerate() {
     const invalid = new Set<string>();
     tasks.forEach((t) => {
-      if (!t.title.trim() || !t.duration || t.duration < 5) invalid.add(t.id);
+      if (!t.title.trim() || !t.scheduledAt || !t.duration || t.duration < 5) invalid.add(t.id);
     });
     if (invalid.size > 0) {
       setErrors(invalid);
-      toast.error("Each task needs a name and duration (≥ 5 min).");
+      toast.error("Each task needs a name, scheduled day & time, and duration (≥ 5 min).");
       return;
     }
     setErrors(new Set());
     const cleaned = tasks.map((t) => ({
       title: t.title.trim(),
       durationMinutes: t.duration,
-      due: t.due || undefined,
+      scheduledAt: t.scheduledAt,
       priority: t.priority,
     }));
     setLoading(true);
@@ -143,10 +157,11 @@ function PlannerPage() {
                         </span>
                       </div>
                       <input
-                        type="date"
-                        value={t.due}
-                        onChange={(e) => update(t.id, { due: e.target.value })}
+                        type="datetime-local"
+                        value={t.scheduledAt}
+                        onChange={(e) => update(t.id, { scheduledAt: e.target.value })}
                         className="rounded border-0 bg-surface px-2 py-1 text-xs ring-1 ring-border focus:outline-none"
+                        aria-label="Scheduled day and time"
                       />
                       <div className="flex overflow-hidden rounded-md ring-1 ring-border">
                         {(["Low", "Medium", "High"] as const).map((p) => (
